@@ -50,6 +50,8 @@ PitchResult PitchDetector::process(const int16_t* samples, std::size_t count) {
 
   yin_[0] = 1.0f;
   float running_sum = 0.0f;
+  std::size_t best_lag = 0;
+  std::size_t fallback_lag = min_lag;
   for (std::size_t lag = 1; lag <= max_lag; ++lag) {
     float difference = 0.0f;
     const std::size_t limit = count - lag;
@@ -61,26 +63,25 @@ PitchResult PitchDetector::process(const int16_t* samples, std::size_t count) {
     yin_[lag] = running_sum > 0.0f
                     ? difference * static_cast<float>(lag) / running_sum
                     : 1.0f;
-  }
-
-  std::size_t best_lag = 0;
-  for (std::size_t lag = min_lag; lag <= max_lag; ++lag) {
-    if (yin_[lag] < kYinThreshold) {
-      while (lag + 1 <= max_lag && yin_[lag + 1] < yin_[lag]) {
-        ++lag;
+    if (lag < min_lag) {
+      continue;
+    }
+    if (yin_[lag] < yin_[fallback_lag]) {
+      fallback_lag = lag;
+    }
+    if (best_lag == 0) {
+      if (yin_[lag] < kYinThreshold) {
+        best_lag = lag;
       }
+    } else if (yin_[lag] < yin_[best_lag]) {
       best_lag = lag;
+    } else {
       break;
     }
   }
 
   if (best_lag == 0) {
-    best_lag = min_lag;
-    for (std::size_t lag = min_lag + 1; lag <= max_lag; ++lag) {
-      if (yin_[lag] < yin_[best_lag]) {
-        best_lag = lag;
-      }
-    }
+    best_lag = fallback_lag;
   }
 
   result.confidence = std::max(0.0f, std::min(1.0f, 1.0f - yin_[best_lag]));
